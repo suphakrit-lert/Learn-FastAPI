@@ -1,12 +1,20 @@
 from enum import Enum
 
 from fastapi import FastAPI
+from pydantic import BaseModel
 
 
 class ModelName(str, Enum):
     alexnet = "alexnet"
     resnet = "resnet"
     lenet = "lenet"
+
+
+class Item(BaseModel):
+    name: str
+    description: str | None = None
+    price: float
+    tax: float | None = None
 
 
 fake_items_db = [{"item_name": "Foo"}, {"item_name": "Bar"}, {"item_name": "Baz"}]
@@ -85,3 +93,41 @@ async def read_item(item_id: str, q: str | None = None, short: bool = False):
             {"description": "This is an amazing item that has a long description"}
         )
     return item
+
+
+@app.post("/items/")
+async def create_item(item: Item):
+    item_dict = item.model_dump()
+    if item.tax is not None:
+        price_with_tax = item.price + item.tax
+        item_dict.update({"price_with_tax": price_with_tax})
+    return item_dict
+
+
+@app.put("/items/{item_id}")
+async def update_item(item_id: int, item: Item, q: str | None = None):
+    """
+    >>> curl -X 'PUT' \
+    'http://127.0.0.1:8000/items/1?q=axs' \
+    -H 'accept: application/json' \
+    -H 'Content-Type: application/json' \
+    -d '{
+    "name": "string",
+    "description": "string",
+    "price": 0,
+    "tax": 0
+    }'
+    
+    {
+    "item_id": 1,
+    "name": "string",
+    "description": "string",
+    "price": 0,
+    "tax": 0,
+    "q": "axs"
+    }
+    """
+    result = {"item_id": item_id, **item.model_dump()}
+    if q:
+        result.update({"q": q})
+    return result

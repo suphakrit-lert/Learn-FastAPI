@@ -1,7 +1,9 @@
+import random
 from enum import Enum
+from typing import Annotated
 
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, Query
+from pydantic import AfterValidator, BaseModel
 
 
 class ModelName(str, Enum):
@@ -29,7 +31,7 @@ async def root():
 
 @app.get("/users/me")
 async def read_user_me():
-    return {"user_id": "the current user"}
+    return ({"user_id": "the current user"},)
 
 
 # @app.get("/items/{item_id}")
@@ -131,3 +133,65 @@ async def update_item(item_id: int, item: Item, q: str | None = None):
     if q:
         result.update({"q": q})
     return result
+
+
+## Chapter 4. Query Param & Validation
+@app.get("/items/")
+async def read_items(
+    q: Annotated[
+        str | None,
+        Query(
+            alias="item-query",
+            title="Query string",
+            description="Query string for the items to search in the database that have a good match",
+            min_length=3,
+            max_length=50,
+            pattern=r"\w{2}\d{2}",
+        ),
+    ] = None,
+):
+    """
+    Annotated can be used to add metadata to your parameters
+
+    For a default value,
+    >>> async def read_items(q: Annotated[str, Query(min_length=3)] = "fixedquery"):
+    """
+    results = {"items": [{"item_id": "Foo"}, {"item_id": "Bar"}]}
+    if q:
+        results.update({"q": q})
+    return results
+
+
+@app.get("/items2/")
+async def read_items2(q: Annotated[list[str], Query()] = ["foo", "bar"]):
+    """
+    >>> http://localhost:8000/items2/
+    >>> http://localhost:8000/items2/?q=foo&q=bar
+    {"q":["foo","bar"]}
+    """
+    query_items = {"q": q}
+    return query_items
+
+
+def check_valid_id(id: str):
+    if not id.startswith(("isbn-", "imdb-")):
+        raise ValueError('Invalid ID format, it must start with "isbn-" or "imdb-"')
+    return id
+
+
+data = {
+    "isbn-9781529046137": "The Hitchhiker's Guide to the Galaxy",
+    "imdb-tt0371724": "The Hitchhiker's Guide to the Galaxy",
+    "isbn-9781439512982": "Isaac Asimov: The Complete Stories, Vol. 2",
+}
+
+
+@app.get("/items3/")
+async def read_items3(
+    id: Annotated[str | None, AfterValidator(check_valid_id)] = None,
+):
+    if id:
+        item = data.get(id)
+    else:
+        id, item = random.choice(list(data.items()))
+    return {"id": id, "name": item}
